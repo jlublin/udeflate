@@ -150,6 +150,289 @@ int read_fixed_block()
 
 /***** Dynamic coding *****/
 
+uint8_t code_order[19] =
+{
+	16, 17, 18, 0, 8, 7, 9, 6, 10,
+	5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+};
+
+int build_code_len_tree(uint8_t codes[19], uint8_t code_tree[32*2])
+{
+	/* [value] => <code,bits> */
+
+	uint8_t next = 0;
+
+	for(int i = 1; i < 8; i++)
+	{
+		for(int j = 0; j < 19; j++)
+		{
+			if(codes[j] == i)
+			{
+				code_tree[2*next] = j;
+				code_tree[2*next + 1] = i;
+				next += 1;
+			}
+		}
+		next <<= 1;
+	}
+}
+
+int build_code_tree(uint8_t codes[], uint16_t code_tree[], int len)
+{
+	/* [code] => <value,bits> */
+	/* TODO: could we use a linked list? Use 0 also and diff pointer can be 8 bits */
+
+	uint16_t next = 0;
+
+	for(int i = 1; i < 16; i++)
+	{
+		for(int j = 0; j < len; j++)
+		{
+			if(codes[j] == i)
+			{
+				code_tree[2*j] = next;
+				code_tree[2*j + 1] = i;
+				next += 1;
+			}
+		}
+		next <<= 1;
+	}
+}
+
+int read_code_len_tree(uint8_t code_tree[32*2])
+{
+	uint8_t len = code_tree[1]; /* Shortest bit length */
+	uint16_t code = read_huffman_bits(len);
+
+	/* TODO: check for max bit length? otherwise max length is 16 bits */
+
+	for(int i = len; i < 16; i++)
+	{
+		/* Check if code j matches code */
+		for(int j = 0; j < 32; j++)
+		{
+			if(j == code && i == code_tree[2*j+1])
+				/* We found the code */
+				return code_tree[2*j];
+		}
+
+		code = (code << 1) | read_huffman_bits(1);
+	}
+
+	/* Error, code was not in tree */
+
+	return -1;
+}
+
+int read_code_tree(uint16_t code_tree[], int n_codes, int n_bits)
+{
+	uint16_t code = read_huffman_bits(1);
+
+	for(int i = 1; i < n_bits; i++)
+	{
+		/* Check if code code_tree[2*j] matches code */
+		for(int j = 0; j < n_codes; j++)
+			if(code == code_tree[2*j] &&
+			      i == code_tree[2*j+1])
+				/* We found the code */
+				return j;
+
+		code = (code << 1) | read_huffman_bits(1);
+	}
+
+	/* Error, code was not in tree */
+
+	return -1;
+}
+
+int read_litlen_code(uint8_t code_tree[], uint8_t *len)
+{
+	int code = read_code_len_tree(code_tree);
+
+	if(code < 0)
+	{
+		printf("Decode error\n");
+		return -1;
+	}
+	else if(code < 16)
+		printf("%d\n", code);
+	else if(code == 16)
+	{
+		*len = read_bits(2) + 3;
+		printf("%d(%d)\n", code, *len);
+	}
+	else if(code == 17)
+	{
+		*len = read_bits(3) + 3;
+		printf("%d(%d)\n", code, *len);
+	}
+	else
+	{
+		*len = read_bits(7) + 11;
+		printf("%d(%d)\n", code, *len);
+	}
+
+	return code;
+}
+
+int read_dynamic_block()
+{
+	uint16_t hlit = read_bits(5) + 257;
+	uint8_t hdist = read_bits(5) + 1;
+	uint8_t hclen = read_bits(4) + 4;
+
+	/* Read init alphabet lengths */
+	uint8_t codes[19] = {0};
+	uint8_t code_tree[32*2] = {0}; /* [value] => <code,bits>, code 0: invalid */
+	/* TODO: we could remove half of the tree if every code was prefixed with 1 */
+
+	printf("(%d, %d, %d)\n", hlit, hdist, hclen);
+
+	for(int i = 0; i < hclen; i++)
+	{
+		uint8_t code = read_bits(3);
+		codes[code_order[i]] = code;
+	}
+
+	for(int i = 0; i < 19; i++)
+		printf("Code(%d): %d\n", i, codes[i]);
+
+	/* Build init alphabet tree */
+
+	build_code_len_tree(codes, code_tree);
+
+	for(int i = 0; i < 32; i++)
+		printf("(%d,%d)\n", code_tree[2*i], code_tree[2*i + 1]);
+
+	/* Read literal/length (litlen) alphabet lengths */
+
+	uint8_t litlen_codes[286] = {0};
+	uint16_t litlen_code_tree[286*2] = {0};
+	/*
+	 * Can't be same as before due to length....
+	 * [code] => <value,bits> must be used instead
+	 */
+
+	for(int i = 0; i < hlit;)
+	{
+		uint8_t len;
+		int litlen = read_litlen_code(code_tree, &len);
+
+		if(litlen < 0)
+			return -1;
+
+		else if(litlen < 16)
+			litlen_codes[i++] = litlen;
+
+		else if(litlen == 16)
+			for(int j = 0; j < len; j++)
+				litlen_codes[i++] = litlen_codes[i-1];
+
+		else
+			for(int j = 0; j < len; j++)
+				litlen_codes[i++] = 0;
+	}
+
+	/* Read distance alphabet lengths */
+
+	uint8_t dist_codes[32] = {0};
+	uint16_t dist_code_tree[32*2] = {0};
+
+	for(int i = 0; i < hdist;)
+	{
+		uint8_t len;
+		int dist = read_litlen_code(code_tree, &len);
+
+		if(dist < 0)
+			return -1;
+
+		else if(dist < 16)
+			dist_codes[i++] = dist;
+
+		else if(dist == 16)
+			for(int j = 0; j < len; j++, i++)
+				dist_codes[i] = dist_codes[i-1];
+
+		else
+			for(int j = 0; j < len; j++)
+				dist_codes[i++] = 0;
+	}
+
+	for(int i = 0; i < hlit; i++)
+		if(litlen_codes[i] != 0)
+			printf("! litlen %d %d\n", i, litlen_codes[i]);
+
+	for(int i = 0; i < hdist; i++)
+		if(dist_codes[i] != 0)
+			printf("! dist %d %d\n", i, dist_codes[i]);
+
+	/* Build litlen and dist alphabet trees */
+
+	build_code_tree(litlen_codes, litlen_code_tree, 286);
+	build_code_tree(dist_codes, dist_code_tree, 32);
+
+	for(int i = 0; i < 286; i++)
+		printf("(%d,%d)\n", litlen_code_tree[2*i], litlen_code_tree[2*i + 1]);
+
+	for(int i = 0; i < 32; i++)
+		printf("(%d,%d)\n", dist_code_tree[2*i], dist_code_tree[2*i + 1]);
+
+	/* Read data */
+
+	for(int i = 0; i < 256; i++)
+	{
+		uint16_t code = read_code_tree(litlen_code_tree, 286, 16);
+
+		if(code < 256)
+		{
+			printf("Code: %d\n", code);
+			write_byte(code);
+		}
+		else if(code == 256)
+		{
+			printf("EOB\n");
+			return 0;
+		}
+		else if(code < 265)
+		{
+			uint16_t len = code - 254;
+			printf("Code: %d (%d)\n", code, len);
+			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
+			printf("Distance: %d\n", distance);
+
+			write_match(len, distance);
+		}
+		else if(code < 285)
+		{
+			uint16_t len = 3 + 4*(1<<((code-261)/4)) + ((code-1)&3)*(1<<((code-261)/4));
+			len += read_bits((code - 261) / 4);
+			printf("Code: %d (%d)\n", code, len);
+
+			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
+			printf("Distance: %d\n", distance);
+
+			write_match(len, distance);
+		}
+		else if(code == 285)
+		{
+			uint16_t len = 258;
+			printf("Code: 285 (258)\n");
+
+			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
+			printf("Distance: %d\n", distance);
+
+			write_match(len, distance);
+		}
+		else
+		{
+			printf("Code error: %d\n", code);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 /***** Main code *****/
 
 int read_block()
@@ -178,7 +461,10 @@ int read_block()
 		read_fixed_block();
 	}
 	else if(btype == 2)
+	{
 		printf("Dynamic Huffman\n");
+		read_dynamic_block();
+	}
 	else
 	{
 		printf("Invalid block type 11\n");
