@@ -1,6 +1,19 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#if 1
+#define LOG_DEBUG(x, ...) printf(x, ##__VA_ARGS__)
+#define LOG_INFO(x, ...) printf(x, ##__VA_ARGS__)
+#define LOG_WARNING(x, ...) printf(x, ##__VA_ARGS__)
+#define LOG_ERROR(x, ...) printf(x, ##__VA_ARGS__)
+#else
+#define LOG_DEBUG(x, ...) do {} while(0)
+#define LOG_INFO(x, ...) do {} while(0)
+#define LOG_WARNING(x, ...) do {} while(0)
+#define LOG_ERROR(x, ...) do {} while(0)
+#endif
+
+
 /***** General code *****/
 
 /* TODO: check overruns on read/write */
@@ -102,20 +115,20 @@ int read_fixed_block()
 
 		if(code < 256)
 		{
-			printf("Code: %d\n", code);
+			LOG_DEBUG("Code: %d\n", code);
 			write_byte(code);
 		}
 		else if(code == 256)
 		{
-			printf("EOB\n");
+			LOG_DEBUG("EOB\n");
 			return 0;
 		}
 		else if(code < 265)
 		{
 			uint16_t len = code - 254;
-			printf("Code: %d (%d)\n", code, len);
+			LOG_DEBUG("Code: %d (%d)\n", code, len);
 			uint16_t distance = read_fixed_distance();
-			printf("Distance: %d\n", distance);
+			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
 		}
@@ -123,26 +136,26 @@ int read_fixed_block()
 		{
 			uint16_t len = 3 + 4*(1<<((code-261)/4)) + ((code-1)&3)*(1<<((code-261)/4));
 			len += read_bits((code - 261) / 4);
-			printf("Code: %d (%d)\n", code, len);
+			LOG_DEBUG("Code: %d (%d)\n", code, len);
 
 			uint16_t distance = read_fixed_distance();
-			printf("Distance: %d\n", distance);
+			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
 		}
 		else if(code == 285)
 		{
 			uint16_t len = 258;
-			printf("Code: 285 (258)\n");
+			LOG_DEBUG("Code: 285 (258)\n");
 
 			uint16_t distance = read_fixed_distance();
-			printf("Distance: %d\n", distance);
+			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
 		}
 		else
 		{
-			printf("Code error: %d\n", code);
+			LOG_ERROR("Code error: %d\n", code);
 			return -1;
 		}
 	}
@@ -251,25 +264,25 @@ int read_litlen_code(uint8_t code_tree[], uint8_t *len)
 
 	if(code < 0)
 	{
-		printf("Decode error\n");
+		LOG_ERROR("Decode error\n");
 		return -1;
 	}
 	else if(code < 16)
-		printf("%d\n", code);
+		LOG_DEBUG("%d\n", code);
 	else if(code == 16)
 	{
 		*len = read_bits(2) + 3;
-		printf("%d(%d)\n", code, *len);
+		LOG_DEBUG("%d(%d)\n", code, *len);
 	}
 	else if(code == 17)
 	{
 		*len = read_bits(3) + 3;
-		printf("%d(%d)\n", code, *len);
+		LOG_DEBUG("%d(%d)\n", code, *len);
 	}
 	else
 	{
 		*len = read_bits(7) + 11;
-		printf("%d(%d)\n", code, *len);
+		LOG_DEBUG("%d(%d)\n", code, *len);
 	}
 
 	return code;
@@ -286,7 +299,7 @@ int read_dynamic_block()
 	uint8_t code_tree[32*2] = {0}; /* [value] => <code,bits>, code 0: invalid */
 	/* TODO: we could remove half of the tree if every code was prefixed with 1 */
 
-	printf("(%d, %d, %d)\n", hlit, hdist, hclen);
+	LOG_DEBUG("(%d, %d, %d)\n", hlit, hdist, hclen);
 
 	for(int i = 0; i < hclen; i++)
 	{
@@ -295,14 +308,14 @@ int read_dynamic_block()
 	}
 
 	for(int i = 0; i < 19; i++)
-		printf("Code(%d): %d\n", i, codes[i]);
+		LOG_DEBUG("Code(%d): %d\n", i, codes[i]);
 
 	/* Build init alphabet tree */
 
 	build_code_len_tree(codes, code_tree);
 
 	for(int i = 0; i < 32; i++)
-		printf("(%d,%d)\n", code_tree[2*i], code_tree[2*i + 1]);
+		LOG_DEBUG("(%d,%d)\n", code_tree[2*i], code_tree[2*i + 1]);
 
 	/* Read literal/length (litlen) alphabet lengths */
 
@@ -360,11 +373,11 @@ int read_dynamic_block()
 
 	for(int i = 0; i < hlit; i++)
 		if(litlen_codes[i] != 0)
-			printf("! litlen %d %d\n", i, litlen_codes[i]);
+			LOG_DEBUG("! litlen %d %d\n", i, litlen_codes[i]);
 
 	for(int i = 0; i < hdist; i++)
 		if(dist_codes[i] != 0)
-			printf("! dist %d %d\n", i, dist_codes[i]);
+			LOG_DEBUG("! dist %d %d\n", i, dist_codes[i]);
 
 	/* Build litlen and dist alphabet trees */
 
@@ -372,10 +385,10 @@ int read_dynamic_block()
 	build_code_tree(dist_codes, dist_code_tree, 32);
 
 	for(int i = 0; i < 286; i++)
-		printf("(%d,%d)\n", litlen_code_tree[2*i], litlen_code_tree[2*i + 1]);
+		LOG_DEBUG("(%d,%d)\n", litlen_code_tree[2*i], litlen_code_tree[2*i + 1]);
 
 	for(int i = 0; i < 32; i++)
-		printf("(%d,%d)\n", dist_code_tree[2*i], dist_code_tree[2*i + 1]);
+		LOG_DEBUG("(%d,%d)\n", dist_code_tree[2*i], dist_code_tree[2*i + 1]);
 
 	/* Read data */
 
@@ -385,20 +398,20 @@ int read_dynamic_block()
 
 		if(code < 256)
 		{
-			printf("Code: %d\n", code);
+			LOG_DEBUG("Code: %d\n", code);
 			write_byte(code);
 		}
 		else if(code == 256)
 		{
-			printf("EOB\n");
+			LOG_DEBUG("EOB\n");
 			return 0;
 		}
 		else if(code < 265)
 		{
 			uint16_t len = code - 254;
-			printf("Code: %d (%d)\n", code, len);
+			LOG_DEBUG("Code: %d (%d)\n", code, len);
 			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
-			printf("Distance: %d\n", distance);
+			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
 		}
@@ -406,26 +419,26 @@ int read_dynamic_block()
 		{
 			uint16_t len = 3 + 4*(1<<((code-261)/4)) + ((code-1)&3)*(1<<((code-261)/4));
 			len += read_bits((code - 261) / 4);
-			printf("Code: %d (%d)\n", code, len);
+			LOG_DEBUG("Code: %d (%d)\n", code, len);
 
 			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
-			printf("Distance: %d\n", distance);
+			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
 		}
 		else if(code == 285)
 		{
 			uint16_t len = 258;
-			printf("Code: 285 (258)\n");
+			LOG_DEBUG("Code: 285 (258)\n");
 
 			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
-			printf("Distance: %d\n", distance);
+			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
 		}
 		else
 		{
-			printf("Code error: %d\n", code);
+			LOG_ERROR("Code error: %d\n", code);
 			return -1;
 		}
 	}
@@ -447,27 +460,27 @@ int read_block()
 	/* Read DEFLATE header */
 
 	if(read_bits(1))
-		printf("Last block\n");
+		LOG_DEBUG("Last block\n");
 	else
-		printf("Not last block\n");
+		LOG_DEBUG("Not last block\n");
 
 	int btype = read_bits(2);
 
 	if(btype == 0)
-		printf("Non-compressed\n");
+		LOG_DEBUG("Non-compressed\n"); /* TODO */
 	else if(btype == 1)
 	{
-		printf("Fixed Huffman\n");
+		LOG_DEBUG("Fixed Huffman\n");
 		read_fixed_block();
 	}
 	else if(btype == 2)
 	{
-		printf("Dynamic Huffman\n");
+		LOG_DEBUG("Dynamic Huffman\n");
 		read_dynamic_block();
 	}
 	else
 	{
-		printf("Invalid block type 11\n");
+		LOG_DEBUG("Invalid block type 11\n");
 		return -1;
 	}
 }
