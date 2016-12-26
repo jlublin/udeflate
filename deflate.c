@@ -378,32 +378,46 @@ int read_dynamic_block()
 
 /***** Main code *****/
 
-int read_block()
+int deflate()
 {
-	/* Read DEFLATE header */
-
-	if(read_bits(1))
-		LOG_DEBUG("Last block\n");
-	else
-		LOG_DEBUG("Not last block\n");
-
-	int btype = read_bits(2);
-
-	if(btype == 0)
-		LOG_DEBUG("Non-compressed\n"); /* TODO */
-	else if(btype == 1)
+	while(1)
 	{
-		LOG_DEBUG("Fixed Huffman\n");
-		read_fixed_block();
+		/* Read DEFLATE header */
+		int last_block = read_bits(1);
+
+		if(last_block)
+			LOG_DEBUG("Last block\n");
+		else
+			LOG_DEBUG("Not last block\n");
+
+		int btype = read_bits(2);
+
+		if(btype == 0)
+		{
+			LOG_DEBUG("Non-compressed\n"); /* TODO */
+			return -1;
+		}
+		else if(btype == 1)
+		{
+			LOG_DEBUG("Fixed Huffman\n");
+			if(read_fixed_block() < 0)
+				return -1;
+		}
+		else if(btype == 2)
+		{
+			LOG_DEBUG("Dynamic Huffman\n");
+			if(read_dynamic_block() < 0)
+				return -1;
+		}
+		else
+		{
+			LOG_DEBUG("Invalid block type 11\n");
+			return -1;
+		}
+
+		if(last_block)
+			break;
 	}
-	else if(btype == 2)
-	{
-		LOG_DEBUG("Dynamic Huffman\n");
-		read_dynamic_block();
-	}
-	else
-	{
-		LOG_DEBUG("Invalid block type 11\n");
-		return -1;
-	}
+
+	return 0;
 }

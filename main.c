@@ -92,7 +92,7 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	read_block();
+	deflate();
 
 	printf("Data: ");
 	for(int i = 0; i < i_out; i++)
