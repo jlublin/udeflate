@@ -380,13 +380,6 @@ int read_dynamic_block()
 
 int read_block()
 {
-	/* Read zlib header */
-
-	uint32_t cmf, flg;
-
-	cmf = read_bits(8);
-	flg = read_bits(8);
-
 	/* Read DEFLATE header */
 
 	if(read_bits(1))
