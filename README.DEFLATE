@@ -1,0 +1,92 @@
+
+Terminology
+===========
+
+Uses RFC1951.
+
+Alphabet/Huffman tree - The connection between codes and symbols
+
+Code - huffman encoded bit sequence
+
+Code length - The length of a code bit sequence
+
+Symbol - huffman decoded data
+
+Litlen - Combination of literal and length
+
+Distance - Distance for litlen
+
+Types
+=====
+Litlen can output either:
+ - a literal (0-255)
+ - a match (incl. length 3-258) which shall be followed by a distance code
+ - an end of block
+
+Distance can endode 1-32768.
+
+Fixed blocks uses a fixed alphabed tree_fixed for litlen.
+Fixed blocks uses 5 bits for distance code.
+
+Dynamic block specifies one litlen alphabet and one distance alphabet in the
+block.
+Dynamic block specifies a code length alphabet used for encoding the other
+alphabets.
+
+Code length alphabet can output
+ - a code length of 0-15
+ - previous code 3-6 times
+ - a code length of 0 repeated 3-138 times
+
+Bit order
+=========
+Huffman codes are encoded most significant bit first.
+All other values are encoded least significant bit first.
+
+Block structure
+===============
+Each block is structured as follows:
+<hdr><block>
+
+hdr: 1 last_block, 2 block type
+
+last_block - 0: more blocks will follow this one, 1: compressed stream is done
+             after this block
+
+type - 0: no compression, 1: fixed block, 2: dynamic block, 3: reserved
+
+Non-compressed block
+====================
+<16 len><16 nlen><data>
+
+len - length of data in bytes
+nlen - ones complement of len
+data - len bytes of uncompressed data
+
+Fixed block
+===========
+Block part is structured as follows:
+<litlen>[<dist>]...<litlen 256>
+
+Litlen is encoded using tree_fixed + extra bits.
+Dist is encoded using 5 bits + extra bits.
+
+Dynamic block
+=============
+Block part is structured as follows:
+<5 hlit><5 hdist><4 hclen><3 clen>...<litlenlen>...<distlen>...<litlen>[<dist>]<litlen>[<dist>]...<litlen 256>
+
+The code length alphabet is encoded using code lengths clen. The clen is only
+used for this alphabet. The clen is 3 bits (0-7) where 0 indicates this symbol
+is not used.
+The clen corresponds in order to the first hclen following symbols:
+16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+
+Litlenlen are hlit + 257 litlen code lengths encoded using the code length alphabet.
+The litlenlen corresponds in sequential order to litlen symbol 0-286.
+Distlen are dhist + 1 dist code lengths encoded using the code length alphabet.
+The distlen corresponds in sequential order to dist symbol 0-29.
+
+Litlen codes and dist codes can be up to 15 bits long.
+
+Litlen symbols and dist symbols are the same as in the fixed case.
