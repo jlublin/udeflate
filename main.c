@@ -43,6 +43,23 @@ uint32_t read_huffman_bits(int n_bits)
 	return ret;
 }
 
+uint32_t peek_huffman_bits(int n_bits)
+{
+	/* Return order: x[n] x[n-1] etc... */
+
+	uint32_t ret = 0;
+
+	int tmp_i_in = i_in;
+
+	for(int i = 0; i < n_bits; i++, tmp_i_in++)
+	{
+		int next = (input[tmp_i_in >> 3] >> (tmp_i_in & 0x7)) & 1;
+		ret = (ret << 1) | next;
+	}
+
+	return ret;
+}
+
 int write_byte(uint8_t data)
 {
 	output[i_out++] = data;

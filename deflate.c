@@ -99,88 +99,44 @@ static uint8_t code_order[19] =
 	5, 11, 4, 12, 3, 13, 2, 14, 1, 15
 };
 
-static int build_code_len_tree(uint8_t codes[19], uint8_t code_tree[32*2])
+static int build_code_tree(uint8_t code_lens[], uint16_t huffman_tree[], int n_codes, int n_bits)
 {
-	/* [value] => <code,bits> */
-
-	uint8_t next = 0;
-
-	for(int i = 1; i < 8; i++)
-	{
-		for(int j = 0; j < 19; j++)
-		{
-			if(codes[j] == i)
-			{
-				code_tree[2*next] = j;
-				code_tree[2*next + 1] = i;
-				next += 1;
-			}
-		}
-		next <<= 1;
-	}
-}
-
-static int build_code_tree(uint8_t codes[], uint16_t code_tree[], int len)
-{
-	/* [code] => <value,bits> */
-	/* TODO: could we use a binary tree? */
+	/* [symbol] => <code,bits> */
+	/* TODO: implement binary tree as alternative */
 
 	uint16_t next = 0;
 
-	for(int i = 1; i < 16; i++)
+	for(int i = 1; i < n_bits; i++)
 	{
-		for(int j = 0; j < len; j++)
+		for(int j = 0; j < n_codes; j++)
 		{
-			if(codes[j] == i)
+			if(code_lens[j] == i)
 			{
-				code_tree[2*j] = next;
-				code_tree[2*j + 1] = i;
+				huffman_tree[2*j] = next;
+				huffman_tree[2*j + 1] = i;
 				next += 1;
 			}
 		}
 		next <<= 1;
 	}
-}
-
-static int read_code_len_tree(uint8_t code_tree[32*2])
-{
-	uint8_t len = code_tree[1]; /* Shortest bit length */
-	uint16_t code = read_huffman_bits(len);
-
-	/* TODO: check for max bit length? otherwise max length is 16 bits */
-
-	for(int i = len; i < 16; i++)
-	{
-		/* Check if code j matches code */
-		for(int j = 0; j < 32; j++)
-		{
-			if(j == code && i == code_tree[2*j+1])
-				/* We found the code */
-				return code_tree[2*j];
-		}
-
-		code = (code << 1) | read_huffman_bits(1);
-	}
-
-	/* Error, code was not in tree */
-
-	return -1;
 }
 
 static int read_code_tree(uint16_t code_tree[], int n_codes, int n_bits)
 {
-	uint16_t code = read_huffman_bits(1);
+	/* Read 16 bits without discarding them from input stream */
+	uint16_t code = peek_huffman_bits(n_bits);
 
-	for(int i = 1; i < n_bits; i++)
+	/* Check if code matches code_tree[2*j] */
+	for(int j = 0; j < n_codes; j++)
 	{
-		/* Check if code code_tree[2*j] matches code */
-		for(int j = 0; j < n_codes; j++)
-			if(code == code_tree[2*j] &&
-			      i == code_tree[2*j+1])
-				/* We found the code */
-				return j;
+		int i = code_tree[2*j+1];
 
-		code = (code << 1) | read_huffman_bits(1);
+		if((code >> (n_bits-i)) == code_tree[2*j] && i > 0)
+		{
+			/* We found the code */
+			read_huffman_bits(i); /* Discard i bits from input stream */
+			return j;
+		}
 	}
 
 	/* Error, code was not in tree */
@@ -188,9 +144,9 @@ static int read_code_tree(uint16_t code_tree[], int n_codes, int n_bits)
 	return -1;
 }
 
-static int read_litlen_code(uint8_t code_tree[], uint8_t *len)
+static int read_litlen_code(uint16_t code_tree[], uint8_t *len)
 {
-	int code = read_code_len_tree(code_tree);
+	int code = read_code_tree(code_tree, 19, 7);
 
 	if(code < 0)
 	{
@@ -226,8 +182,7 @@ static int read_dynamic_block()
 
 	/* Read init alphabet lengths */
 	uint8_t codes[19] = {0};
-	uint8_t code_tree[32*2] = {0}; /* [value] => <code,bits>, code 0: invalid */
-	/* TODO: we could remove half of the tree if every code was prefixed with 1 */
+	uint16_t code_tree[19*2] = {0};
 
 	LOG_DEBUG("(%d, %d, %d)\n", hlit, hdist, hclen);
 
@@ -242,7 +197,7 @@ static int read_dynamic_block()
 
 	/* Build init alphabet tree */
 
-	build_code_len_tree(codes, code_tree);
+	build_code_tree(codes, code_tree, 19, 8);
 
 	for(int i = 0; i < 32; i++)
 		LOG_DEBUG("(%d,%d)\n", code_tree[2*i], code_tree[2*i + 1]);
@@ -311,8 +266,8 @@ static int read_dynamic_block()
 
 	/* Build litlen and dist alphabet trees */
 
-	build_code_tree(litlen_codes, litlen_code_tree, 286);
-	build_code_tree(dist_codes, dist_code_tree, 32);
+	build_code_tree(litlen_codes, litlen_code_tree, 286, 16);
+	build_code_tree(dist_codes, dist_code_tree, 32, 16);
 
 	for(int i = 0; i < 286; i++)
 		LOG_DEBUG("(%d,%d)\n", litlen_code_tree[2*i], litlen_code_tree[2*i + 1]);
