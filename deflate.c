@@ -3,7 +3,7 @@
 
 /***** Fixed coding *****/
 
-uint16_t read_fixed_code()
+static uint16_t read_fixed_code()
 {
 	uint16_t code = read_huffman_bits(7);
 
@@ -25,7 +25,7 @@ uint16_t read_fixed_code()
 	return code - 0x100;
 }
 
-uint16_t read_fixed_distance()
+static uint16_t read_fixed_distance()
 {
 	uint16_t code = read_huffman_bits(5);
 
@@ -37,7 +37,7 @@ uint16_t read_fixed_distance()
 	return base + read_bits((code-2)/2);
 }
 
-int read_fixed_block()
+static int read_fixed_block()
 {
 	while(1)
 	{
@@ -93,13 +93,13 @@ int read_fixed_block()
 
 /***** Dynamic coding *****/
 
-uint8_t code_order[19] =
+static uint8_t code_order[19] =
 {
 	16, 17, 18, 0, 8, 7, 9, 6, 10,
 	5, 11, 4, 12, 3, 13, 2, 14, 1, 15
 };
 
-int build_code_len_tree(uint8_t codes[19], uint8_t code_tree[32*2])
+static int build_code_len_tree(uint8_t codes[19], uint8_t code_tree[32*2])
 {
 	/* [value] => <code,bits> */
 
@@ -120,10 +120,10 @@ int build_code_len_tree(uint8_t codes[19], uint8_t code_tree[32*2])
 	}
 }
 
-int build_code_tree(uint8_t codes[], uint16_t code_tree[], int len)
+static int build_code_tree(uint8_t codes[], uint16_t code_tree[], int len)
 {
 	/* [code] => <value,bits> */
-	/* TODO: could we use a linked list? Use 0 also and diff pointer can be 8 bits */
+	/* TODO: could we use a binary tree? */
 
 	uint16_t next = 0;
 
@@ -142,7 +142,7 @@ int build_code_tree(uint8_t codes[], uint16_t code_tree[], int len)
 	}
 }
 
-int read_code_len_tree(uint8_t code_tree[32*2])
+static int read_code_len_tree(uint8_t code_tree[32*2])
 {
 	uint8_t len = code_tree[1]; /* Shortest bit length */
 	uint16_t code = read_huffman_bits(len);
@@ -167,7 +167,7 @@ int read_code_len_tree(uint8_t code_tree[32*2])
 	return -1;
 }
 
-int read_code_tree(uint16_t code_tree[], int n_codes, int n_bits)
+static int read_code_tree(uint16_t code_tree[], int n_codes, int n_bits)
 {
 	uint16_t code = read_huffman_bits(1);
 
@@ -188,7 +188,7 @@ int read_code_tree(uint16_t code_tree[], int n_codes, int n_bits)
 	return -1;
 }
 
-int read_litlen_code(uint8_t code_tree[], uint8_t *len)
+static int read_litlen_code(uint8_t code_tree[], uint8_t *len)
 {
 	int code = read_code_len_tree(code_tree);
 
@@ -218,7 +218,7 @@ int read_litlen_code(uint8_t code_tree[], uint8_t *len)
 	return code;
 }
 
-int read_dynamic_block()
+static int read_dynamic_block()
 {
 	uint16_t hlit = read_bits(5) + 257;
 	uint8_t hdist = read_bits(5) + 1;
