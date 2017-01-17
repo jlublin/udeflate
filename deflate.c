@@ -203,65 +203,67 @@ static int read_dynamic_block()
 	uint8_t hdist = read_bits(5) + 1;
 	uint8_t hclen = read_bits(4) + 4;
 
-	uint8_t codes[19] = {0};
 	uint16_t cl_tree[19*2] = {0}; /* CL tree */
-
-	uint8_t litlen_codes[286] = {0};
 	uint16_t litlen_tree[286*2] = {0}; /* litlen tree */
-
-	uint8_t dist_codes[32] = {0};
 	uint16_t dist_tree[32*2] = {0}; /* dist tree */
-
-	/* Read init alphabet lengths */
 
 	LOG_DEBUG("(%d, %d, %d)\n", hlit, hdist, hclen);
 
-	for(int i = 0; i < hclen; i++)
+	/* Setup CL tree */
 	{
-		uint8_t code = read_bits(3);
-		codes[code_order[i]] = code;
+		uint8_t cl_lens[19] = {0};
+
+		/* Read CL lengths */
+		for(int i = 0; i < hclen; i++)
+		{
+			uint8_t code = read_bits(3);
+			cl_lens[code_order[i]] = code;
+		}
+
+		for(int i = 0; i < 19; i++)
+			LOG_DEBUG("Code(%d): %d\n", i, cl_lens[i]);
+
+		/* Build CL tree */
+
+		build_code_tree(cl_lens, cl_tree, 19, 8);
+
+		for(int i = 0; i < 32; i++)
+			LOG_DEBUG("(%d,%d)\n", cl_tree[2*i], cl_tree[2*i + 1]);
 	}
 
-	for(int i = 0; i < 19; i++)
-		LOG_DEBUG("Code(%d): %d\n", i, codes[i]);
+	/* Setup litlen and dist trees */
+	{
+		uint8_t litlen_lens[286] = {0};
+		uint8_t dist_lens[32] = {0};
 
-	/* Build init alphabet tree */
+		/* Read literal and dist tree lengths */
 
-	build_code_tree(codes, cl_tree, 19, 8);
+		read_huffman_tree_lens(cl_tree, litlen_lens, hlit);
+		read_huffman_tree_lens(cl_tree, dist_lens, hdist);
 
-	for(int i = 0; i < 32; i++)
-		LOG_DEBUG("(%d,%d)\n", cl_tree[2*i], cl_tree[2*i + 1]);
+		/* Debug code */
 
-	/* Read literal/length (litlen) alphabet lengths */
+		for(int i = 0; i < hlit; i++)
+			if(litlen_lens[i] != 0)
+				LOG_DEBUG("! litlen %d %d\n", i, litlen_lens[i]);
 
-	read_huffman_tree_lens(cl_tree, litlen_codes, hlit);
+		for(int i = 0; i < hdist; i++)
+			if(dist_lens[i] != 0)
+				LOG_DEBUG("! dist %d %d\n", i, dist_lens[i]);
 
-	/* Read distance alphabet lengths */
+		/* Build litlen and dist trees */
 
-	read_huffman_tree_lens(cl_tree, dist_codes, hdist);
+		build_code_tree(litlen_lens, litlen_tree, 286, 16);
+		build_code_tree(dist_lens, dist_tree, 32, 16);
 
-	/* Debug code */
+		/* Debug code */
 
-	for(int i = 0; i < hlit; i++)
-		if(litlen_codes[i] != 0)
-			LOG_DEBUG("! litlen %d %d\n", i, litlen_codes[i]);
+		for(int i = 0; i < 286; i++)
+			LOG_DEBUG("(%d,%d)\n", litlen_tree[2*i], litlen_tree[2*i + 1]);
 
-	for(int i = 0; i < hdist; i++)
-		if(dist_codes[i] != 0)
-			LOG_DEBUG("! dist %d %d\n", i, dist_codes[i]);
-
-	/* Build litlen and dist alphabet trees */
-
-	build_code_tree(litlen_codes, litlen_tree, 286, 16);
-	build_code_tree(dist_codes, dist_tree, 32, 16);
-
-	/* Debug code */
-
-	for(int i = 0; i < 286; i++)
-		LOG_DEBUG("(%d,%d)\n", litlen_tree[2*i], litlen_tree[2*i + 1]);
-
-	for(int i = 0; i < 32; i++)
-		LOG_DEBUG("(%d,%d)\n", dist_tree[2*i], dist_tree[2*i + 1]);
+		for(int i = 0; i < 32; i++)
+			LOG_DEBUG("(%d,%d)\n", dist_tree[2*i], dist_tree[2*i + 1]);
+	}
 
 	/* Read data */
 
