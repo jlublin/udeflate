@@ -4,13 +4,15 @@ Terminology
 
 Uses RFC1951.
 
-Alphabet/Huffman tree - The connection between codes and symbols
+Alphabet - A set of symbols
 
-Code - huffman encoded bit sequence
+Huffman tree - The connection between the codes and symbols
+
+Code - Huffman encoded bit sequence
 
 Code length - The length of a code bit sequence
 
-Symbol - huffman decoded data
+Symbol - Huffman decoded data
 
 Litlen - Combination of literal and length
 
