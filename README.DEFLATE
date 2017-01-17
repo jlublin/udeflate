@@ -30,10 +30,10 @@ Distance can endode 1-32768.
 Fixed blocks uses a fixed alphabed tree_fixed for litlen.
 Fixed blocks uses 5 bits for distance code.
 
-Dynamic block specifies one litlen alphabet and one distance alphabet in the
-block.
-Dynamic block specifies a code length alphabet used for encoding the other
-alphabets.
+Dynamic block specifies one litlen alphabet (litlen) and one
+distance alphabet (dist) in the block.
+Dynamic block specifies a code length (CL) alphabet used for encoding the
+other alphabets.
 
 Code length alphabet can output
  - a code length of 0-15

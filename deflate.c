@@ -203,9 +203,16 @@ static int read_dynamic_block()
 	uint8_t hdist = read_bits(5) + 1;
 	uint8_t hclen = read_bits(4) + 4;
 
-	/* Read init alphabet lengths */
 	uint8_t codes[19] = {0};
-	uint16_t code_tree[19*2] = {0};
+	uint16_t cl_tree[19*2] = {0}; /* CL tree */
+
+	uint8_t litlen_codes[286] = {0};
+	uint16_t litlen_tree[286*2] = {0}; /* litlen tree */
+
+	uint8_t dist_codes[32] = {0};
+	uint16_t dist_tree[32*2] = {0}; /* dist tree */
+
+	/* Read init alphabet lengths */
 
 	LOG_DEBUG("(%d, %d, %d)\n", hlit, hdist, hclen);
 
@@ -220,24 +227,18 @@ static int read_dynamic_block()
 
 	/* Build init alphabet tree */
 
-	build_code_tree(codes, code_tree, 19, 8);
+	build_code_tree(codes, cl_tree, 19, 8);
 
 	for(int i = 0; i < 32; i++)
-		LOG_DEBUG("(%d,%d)\n", code_tree[2*i], code_tree[2*i + 1]);
+		LOG_DEBUG("(%d,%d)\n", cl_tree[2*i], cl_tree[2*i + 1]);
 
 	/* Read literal/length (litlen) alphabet lengths */
 
-	uint8_t litlen_codes[286] = {0};
-	uint16_t litlen_code_tree[286*2] = {0};
-
-	read_huffman_tree_lens(code_tree, litlen_codes, hlit);
+	read_huffman_tree_lens(cl_tree, litlen_codes, hlit);
 
 	/* Read distance alphabet lengths */
 
-	uint8_t dist_codes[32] = {0};
-	uint16_t dist_code_tree[32*2] = {0};
-
-	read_huffman_tree_lens(code_tree, dist_codes, hdist);
+	read_huffman_tree_lens(cl_tree, dist_codes, hdist);
 
 	/* Debug code */
 
@@ -251,20 +252,22 @@ static int read_dynamic_block()
 
 	/* Build litlen and dist alphabet trees */
 
-	build_code_tree(litlen_codes, litlen_code_tree, 286, 16);
-	build_code_tree(dist_codes, dist_code_tree, 32, 16);
+	build_code_tree(litlen_codes, litlen_tree, 286, 16);
+	build_code_tree(dist_codes, dist_tree, 32, 16);
+
+	/* Debug code */
 
 	for(int i = 0; i < 286; i++)
-		LOG_DEBUG("(%d,%d)\n", litlen_code_tree[2*i], litlen_code_tree[2*i + 1]);
+		LOG_DEBUG("(%d,%d)\n", litlen_tree[2*i], litlen_tree[2*i + 1]);
 
 	for(int i = 0; i < 32; i++)
-		LOG_DEBUG("(%d,%d)\n", dist_code_tree[2*i], dist_code_tree[2*i + 1]);
+		LOG_DEBUG("(%d,%d)\n", dist_tree[2*i], dist_tree[2*i + 1]);
 
 	/* Read data */
 
 	for(int i = 0; i < 256; i++)
 	{
-		uint16_t code = read_code_tree(litlen_code_tree, 286, 16);
+		uint16_t code = read_code_tree(litlen_tree, 286, 16);
 
 		if(code < 256)
 		{
@@ -280,7 +283,7 @@ static int read_dynamic_block()
 		{
 			uint16_t len = code - 254;
 			LOG_DEBUG("Code: %d (%d)\n", code, len);
-			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
+			uint16_t distance = read_code_tree(dist_tree, 32, 16);
 			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
@@ -291,7 +294,7 @@ static int read_dynamic_block()
 			len += read_bits((code - 261) / 4);
 			LOG_DEBUG("Code: %d (%d)\n", code, len);
 
-			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
+			uint16_t distance = read_code_tree(dist_tree, 32, 16);
 			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
@@ -301,7 +304,7 @@ static int read_dynamic_block()
 			uint16_t len = 258;
 			LOG_DEBUG("Code: 285 (258)\n");
 
-			uint16_t distance = read_code_tree(dist_code_tree, 32, 16);
+			uint16_t distance = read_code_tree(dist_tree, 32, 16);
 			LOG_DEBUG("Distance: %d\n", distance);
 
 			write_match(len, distance);
