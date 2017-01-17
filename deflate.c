@@ -223,12 +223,12 @@ static int read_dynamic_block()
 			litlen_codes[i++] = litlen;
 
 		else if(litlen == 16)
-			for(int j = 0; j < len; j++)
-				litlen_codes[i++] = litlen_codes[i-1];
+			for(int j = 0; j < len; j++, i++)
+				litlen_codes[i] = litlen_codes[i-1];
 
 		else
-			for(int j = 0; j < len; j++)
-				litlen_codes[i++] = 0;
+			for(int j = 0; j < len; j++, i++)
+				litlen_codes[i] = 0;
 	}
 
 	/* Read distance alphabet lengths */
@@ -252,8 +252,8 @@ static int read_dynamic_block()
 				dist_codes[i] = dist_codes[i-1];
 
 		else
-			for(int j = 0; j < len; j++)
-				dist_codes[i++] = 0;
+			for(int j = 0; j < len; j++, i++)
+				dist_codes[i] = 0;
 	}
 
 	for(int i = 0; i < hlit; i++)
