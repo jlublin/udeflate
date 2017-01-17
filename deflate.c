@@ -174,6 +174,29 @@ static int read_litlen_code(uint16_t code_tree[], uint8_t *len)
 	return code;
 }
 
+static int read_huffman_tree_lens(uint16_t cl_tree[], uint8_t code_lens[], int tree_len)
+{
+	for(int i = 0; i < tree_len;)
+	{
+		uint8_t len;
+		int code_len = read_litlen_code(cl_tree, &len);
+
+		if(code_len < 0)
+			return -1;
+
+		else if(code_len < 16)
+			code_lens[i++] = code_len;
+
+		else if(code_len == 16)
+			for(int j = 0; j < len; j++, i++)
+				code_lens[i] = code_lens[i-1];
+
+		else
+			for(int j = 0; j < len; j++, i++)
+				code_lens[i] = 0;
+	}
+}
+
 static int read_dynamic_block()
 {
 	uint16_t hlit = read_bits(5) + 257;
@@ -206,55 +229,17 @@ static int read_dynamic_block()
 
 	uint8_t litlen_codes[286] = {0};
 	uint16_t litlen_code_tree[286*2] = {0};
-	/*
-	 * Can't be same as before due to length....
-	 * [code] => <value,bits> must be used instead
-	 */
 
-	for(int i = 0; i < hlit;)
-	{
-		uint8_t len;
-		int litlen = read_litlen_code(code_tree, &len);
-
-		if(litlen < 0)
-			return -1;
-
-		else if(litlen < 16)
-			litlen_codes[i++] = litlen;
-
-		else if(litlen == 16)
-			for(int j = 0; j < len; j++, i++)
-				litlen_codes[i] = litlen_codes[i-1];
-
-		else
-			for(int j = 0; j < len; j++, i++)
-				litlen_codes[i] = 0;
-	}
+	read_huffman_tree_lens(code_tree, litlen_codes, hlit);
 
 	/* Read distance alphabet lengths */
 
 	uint8_t dist_codes[32] = {0};
 	uint16_t dist_code_tree[32*2] = {0};
 
-	for(int i = 0; i < hdist;)
-	{
-		uint8_t len;
-		int dist = read_litlen_code(code_tree, &len);
+	read_huffman_tree_lens(code_tree, dist_codes, hdist);
 
-		if(dist < 0)
-			return -1;
-
-		else if(dist < 16)
-			dist_codes[i++] = dist;
-
-		else if(dist == 16)
-			for(int j = 0; j < len; j++, i++)
-				dist_codes[i] = dist_codes[i-1];
-
-		else
-			for(int j = 0; j < len; j++, i++)
-				dist_codes[i] = 0;
-	}
+	/* Debug code */
 
 	for(int i = 0; i < hlit; i++)
 		if(litlen_codes[i] != 0)
