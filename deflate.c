@@ -1,6 +1,54 @@
 #include "deflate.h"
 #include "deflate_config.h"
 
+/***** General functions *****/
+const int EOB = 0x10000;
+static int decode_symbol(uint16_t code)
+{
+	int ret = 0;
+
+	if(code < 256)
+	{
+		LOG_DEBUG("Code: %d\n", code);
+		write_byte(code);
+	}
+
+	else if(code == 256)
+	{
+		LOG_DEBUG("EOB\n");
+		ret = EOB;
+	}
+	else if(code < 265)
+	{
+		uint16_t len = code - 254;
+		LOG_DEBUG("Code: %d (%d)\n", code, len);
+
+		ret = len;
+	}
+	else if(code < 285)
+	{
+		uint16_t len = 3 + 4*(1<<((code-261)/4)) + ((code-1)&3)*(1<<((code-261)/4));
+		len += read_bits((code - 261) / 4);
+		LOG_DEBUG("Code: %d (%d)\n", code, len);
+
+		ret = len;
+	}
+	else if(code == 285)
+	{
+		uint16_t len = 258;
+		LOG_DEBUG("Code: 285 (258)\n");
+
+		ret = len;
+	}
+	else
+	{
+		LOG_ERROR("Code error: %d\n", code);
+		ret = -1;
+	}
+
+	return ret;
+}
+
 /***** Fixed coding *****/
 
 static uint16_t read_fixed_code()
@@ -39,56 +87,28 @@ static uint16_t read_fixed_distance()
 
 static int read_fixed_block()
 {
-	while(1)
+	for(int i = 0; i < 256; i++) /* TODO: is there a max length? */
 	{
 		uint16_t code = read_fixed_code();
 
-		if(code < 256)
+		int len = decode_symbol(code);
+
+		if(len < 0)
+			return len;
+
+		if(len == EOB)
+			break;
+
+		if(len > 0)
 		{
-			LOG_DEBUG("Code: %d\n", code);
-			write_byte(code);
-		}
-		else if(code == 256)
-		{
-			LOG_DEBUG("EOB\n");
-			return 0;
-		}
-		else if(code < 265)
-		{
-			uint16_t len = code - 254;
-			LOG_DEBUG("Code: %d (%d)\n", code, len);
 			uint16_t distance = read_fixed_distance();
-			LOG_DEBUG("Distance: %d\n", distance);
 
+			LOG_DEBUG("Match: %d, %d\n", len, distance);
 			write_match(len, distance);
-		}
-		else if(code < 285)
-		{
-			uint16_t len = 3 + 4*(1<<((code-261)/4)) + ((code-1)&3)*(1<<((code-261)/4));
-			len += read_bits((code - 261) / 4);
-			LOG_DEBUG("Code: %d (%d)\n", code, len);
-
-			uint16_t distance = read_fixed_distance();
-			LOG_DEBUG("Distance: %d\n", distance);
-
-			write_match(len, distance);
-		}
-		else if(code == 285)
-		{
-			uint16_t len = 258;
-			LOG_DEBUG("Code: 285 (258)\n");
-
-			uint16_t distance = read_fixed_distance();
-			LOG_DEBUG("Distance: %d\n", distance);
-
-			write_match(len, distance);
-		}
-		else
-		{
-			LOG_ERROR("Code error: %d\n", code);
-			return -1;
 		}
 	}
+
+	return 0;
 }
 
 /***** Dynamic coding *****/
@@ -267,54 +287,24 @@ static int read_dynamic_block()
 
 	/* Read data */
 
-	for(int i = 0; i < 256; i++)
+	for(int i = 0; i < 256; i++) /* TODO: is there a max length? */
 	{
 		uint16_t code = read_code_tree(litlen_tree, 286, 16);
 
-		if(code < 256)
+		int len = decode_symbol(code);
+
+		if(len < 0)
+			return len;
+
+		if(len == EOB)
+			break;
+
+		if(len > 0)
 		{
-			LOG_DEBUG("Code: %d\n", code);
-			write_byte(code);
-		}
-		else if(code == 256)
-		{
-			LOG_DEBUG("EOB\n");
-			return 0;
-		}
-		else if(code < 265)
-		{
-			uint16_t len = code - 254;
-			LOG_DEBUG("Code: %d (%d)\n", code, len);
 			uint16_t distance = read_code_tree(dist_tree, 32, 16);
-			LOG_DEBUG("Distance: %d\n", distance);
 
+			LOG_DEBUG("Match: %d, %d\n", len, distance);
 			write_match(len, distance);
-		}
-		else if(code < 285)
-		{
-			uint16_t len = 3 + 4*(1<<((code-261)/4)) + ((code-1)&3)*(1<<((code-261)/4));
-			len += read_bits((code - 261) / 4);
-			LOG_DEBUG("Code: %d (%d)\n", code, len);
-
-			uint16_t distance = read_code_tree(dist_tree, 32, 16);
-			LOG_DEBUG("Distance: %d\n", distance);
-
-			write_match(len, distance);
-		}
-		else if(code == 285)
-		{
-			uint16_t len = 258;
-			LOG_DEBUG("Code: 285 (258)\n");
-
-			uint16_t distance = read_code_tree(dist_tree, 32, 16);
-			LOG_DEBUG("Distance: %d\n", distance);
-
-			write_match(len, distance);
-		}
-		else
-		{
-			LOG_ERROR("Code error: %d\n", code);
-			return -1;
 		}
 	}
 
