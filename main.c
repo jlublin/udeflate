@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "deflate.h"
 
@@ -13,7 +14,7 @@ uint8_t output[1 << 16]; /* 64 kiB */
 int i_in; /* Next input bit index */
 int i_out; /* Next output byte index */
 
-uint32_t read_bits(int n_bits)
+int read_bits(int n_bits)
 {
 	/* Return order: x[0] x[1] etc... */
 
@@ -28,7 +29,7 @@ uint32_t read_bits(int n_bits)
 	return ret;
 }
 
-uint32_t read_huffman_bits(int n_bits)
+int read_huffman_bits(int n_bits)
 {
 	/* Return order: x[n] x[n-1] etc... */
 
@@ -43,7 +44,7 @@ uint32_t read_huffman_bits(int n_bits)
 	return ret;
 }
 
-uint32_t peek_huffman_bits(int n_bits)
+int peek_huffman_bits(int n_bits)
 {
 	/* Return order: x[n] x[n-1] etc... */
 
@@ -56,6 +57,17 @@ uint32_t peek_huffman_bits(int n_bits)
 		int next = (input[tmp_i_in >> 3] >> (tmp_i_in & 0x7)) & 1;
 		ret = (ret << 1) | next;
 	}
+
+	return ret;
+}
+
+int read_next_byte()
+{
+	i_in = (i_in + 7) & (~7);
+
+	uint8_t ret = input[i_in >> 3];
+
+	i_in += 8;
 
 	return ret;
 }
@@ -73,6 +85,16 @@ int write_match(uint16_t len, uint16_t dist)
 
 	for(int i = 0; i < len; i++)
 		write_byte(*(ptr++));
+
+	return 0;
+}
+
+int write_input_bytes(uint16_t len)
+{
+	memcpy(&output[i_out], &input[i_in >> 3], len);
+
+	i_out += len;
+	i_in += 8*len;
 
 	return 0;
 }

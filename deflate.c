@@ -49,7 +49,22 @@ static int decode_symbol(uint16_t code)
 	return ret;
 }
 
-/***** Fixed coding *****/
+/***** Non-compressed block *****/
+
+static int read_non_compressed_block()
+{
+	uint8_t len = read_next_byte();
+	uint8_t nlen = read_next_byte();
+
+	if(len != ~nlen)
+		return -1;
+
+	write_input_bytes(len);
+
+	return 0;
+}
+
+/***** Fixed Huffman coding block *****/
 
 static uint16_t read_fixed_code()
 {
@@ -111,7 +126,7 @@ static int read_fixed_block()
 	return 0;
 }
 
-/***** Dynamic coding *****/
+/***** Dynamic Huffman coding block *****/
 
 static uint8_t code_order[19] =
 {
@@ -330,7 +345,8 @@ int deflate()
 		if(btype == 0)
 		{
 			LOG_DEBUG("Non-compressed\n"); /* TODO */
-			return -1;
+			if(read_non_compressed_block() < 0)
+				return -1;
 		}
 		else if(btype == 1)
 		{
