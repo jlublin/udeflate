@@ -157,7 +157,11 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	deflate();
+	if(deflate() < 0)
+	{
+		printf("Error running DEFLATE\n");
+		return -1;
+	}
 
 	printf("Data: ");
 	for(int i = 0; i < i_out; i++)
