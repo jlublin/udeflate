@@ -102,7 +102,7 @@ static uint16_t read_fixed_distance()
 
 static int read_fixed_block()
 {
-	for(int i = 0; i < 256; i++) /* TODO: is there a max length? */
+	for(int i = 0;; i++) /* TODO: is there a max length? */
 	{
 		uint16_t code = read_fixed_code();
 
@@ -302,7 +302,7 @@ static int read_dynamic_block()
 
 	/* Read data */
 
-	for(int i = 0; i < 256; i++) /* TODO: is there a max length? */
+	for(int i = 0;; i++) /* TODO: is there a max length? */
 	{
 		uint16_t code = read_code_tree(litlen_tree, 286, 16);
 
