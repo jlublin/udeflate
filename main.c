@@ -27,21 +27,35 @@ SOFTWARE.
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <errno.h>
 
 #include "deflate.h"
 
 /***** I/O code *****/
 
-/* TODO: check overruns on read/write */
+/*
+ * Error codes:
+ *
+ * EOVERFLOW - Is returned when output buffer is to small
+ * EINVAL    - Is returned when input data is invalid
+ *             (i.e. read/write outside of buffers)
+ */
 
-uint8_t input[1 << 10]; /* 1 kiB */
-uint8_t output[1 << 16]; /* 64 kiB */
+#define IN_SIZE (1 << 10) /* 1 kiB */
+#define OUT_SIZE (1 << 16) /* 64 kiB */
+
+uint8_t input[IN_SIZE];
+uint8_t output[OUT_SIZE];
 
 int i_in; /* Next input bit index */
 int i_out; /* Next output byte index */
 
 int read_bits(int n_bits)
 {
+	/* Check input is OK with n_bits */
+	if((((i_in + n_bits + 7) & (~7)) >> 3) > IN_SIZE)
+		return -EINVAL;
+
 	/* Return order: x[0] x[1] etc... */
 
 	uint32_t ret = 0;
@@ -57,6 +71,10 @@ int read_bits(int n_bits)
 
 int read_huffman_bits(int n_bits)
 {
+	/* Check input is OK with n_bits */
+	if((((i_in + n_bits + 7) & (~7)) >> 3) > IN_SIZE)
+		return -EINVAL;
+
 	/* Return order: x[n] x[n-1] etc... */
 
 	uint32_t ret = 0;
@@ -72,6 +90,10 @@ int read_huffman_bits(int n_bits)
 
 int peek_huffman_bits(int n_bits)
 {
+	/* Check input is OK with n_bits */
+	if((((i_in + n_bits + 7) & (~7)) >> 3) > IN_SIZE)
+		return -EINVAL;
+
 	/* Return order: x[n] x[n-1] etc... */
 
 	uint32_t ret = 0;
@@ -89,6 +111,10 @@ int peek_huffman_bits(int n_bits)
 
 int read_next_byte()
 {
+	/* Check input is OK with another aligned byte */
+	if((((i_in + 7) & (~7)) >> 3) + 1 > IN_SIZE)
+		return -EINVAL;
+
 	i_in = (i_in + 7) & (~7);
 
 	uint8_t ret = input[i_in >> 3];
@@ -100,6 +126,10 @@ int read_next_byte()
 
 int write_byte(uint8_t data)
 {
+	/* Check output is OK with another byte */
+	if((i_out + 1) > OUT_SIZE)
+		return -EOVERFLOW;
+
 	output[i_out++] = data;
 
 	return 0;
@@ -107,16 +137,32 @@ int write_byte(uint8_t data)
 
 int write_match(uint16_t len, uint16_t dist)
 {
+	/* Check output is OK with len */
+	if((i_out + len) > OUT_SIZE)
+		return -EOVERFLOW;
+
+	/* Check output is OK with dist */
+	if(i_out - dist < 0)
+		return -EINVAL;
+
+	/* Byte by byte copy, memcpy doesn't work on overlapping regions */
 	uint8_t *ptr = &output[i_out - dist];
 
 	for(int i = 0; i < len; i++)
-		write_byte(*(ptr++));
+		output[i_out++] = *(ptr++);
 
 	return 0;
 }
 
 int write_input_bytes(uint16_t len)
 {
+	/* Check input and output is OK with len */
+	if((i_out + len) > OUT_SIZE)
+		return -EOVERFLOW;
+
+	if((i_in >> 3) + len > IN_SIZE)
+		return -EINVAL;
+
 	memcpy(&output[i_out], &input[i_in >> 3], len);
 
 	i_out += len;
@@ -129,6 +175,8 @@ int write_input_bytes(uint16_t len)
 
 int main(int argc, char **argv)
 {
+	int ret;
+
 	if(argc < 2)
 	{
 		printf("Usage: %s <file>\n", argv[0]);
@@ -143,7 +191,7 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	fread(input, 1, 1024, file);
+	ret = fread(input, 1, 1024, file);
 
 	if(ferror(file))
 	{
@@ -157,9 +205,12 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	if(deflate() < 0)
+	i_in = 0;
+	i_out = 0;
+
+	if((ret = deflate()) < 0)
 	{
-		printf("Error running DEFLATE\n");
+		printf("Error running DEFLATE (%d)\n", ret);
 		return -1;
 	}
 

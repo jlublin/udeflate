@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <errno.h>
 
 /***** Application defined functions *****/
 int read_bits(int n_bits);

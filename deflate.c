@@ -27,6 +27,13 @@ SOFTWARE.
 #include "deflate.h"
 #include "deflate_config.h"
 
+/*
+ * Error codes:
+ *
+ * EINVAL    - Is returned when input data is invalid
+ * x         - Any code returned from I/O code
+ */
+
 /***** General functions *****/
 const int EOB = 0x10000;
 static int decode_symbol(uint16_t code)
@@ -69,7 +76,7 @@ static int decode_symbol(uint16_t code)
 	else
 	{
 		LOG_ERROR("Code error: %d\n", code);
-		ret = -1;
+		ret = -EINVAL;
 	}
 
 	return ret;
@@ -83,24 +90,31 @@ static int read_non_compressed_block()
 	uint8_t nlen = read_next_byte();
 
 	if(len != ~nlen)
-		return -1;
+		return -EINVAL;
 
-	write_input_bytes(len);
-
-	return 0;
+	return write_input_bytes(len);
 }
 
 /***** Fixed Huffman coding block *****/
 
-static uint16_t read_fixed_code()
+static int read_fixed_code()
 {
-	uint16_t code = read_huffman_bits(7);
+	int ret;
+	uint16_t code;
+
+	if((ret = read_huffman_bits(7)) < 0)
+		return ret;
+
+	code = ret;
 
 	if(code < 0x18)
 		return code + 256;
 
+	if((ret = read_huffman_bits(1)) < 0)
+		return ret;
+
 	code <<= 1;
-	code |= read_huffman_bits(1);
+	code |= ret;
 
 	if(code < 0xc0)
 		return code - 0x30;
@@ -108,15 +122,24 @@ static uint16_t read_fixed_code()
 	if(code < 0xc8)
 		return code + 0x58;
 
+	if((ret = read_huffman_bits(1)) < 0)
+		return ret;
+
 	code <<= 1;
-	code |= read_huffman_bits(1);
+	code |= ret;
 
 	return code - 0x100;
 }
 
-static uint16_t read_fixed_distance()
+static int read_fixed_distance()
 {
-	uint16_t code = read_huffman_bits(5);
+	int ret;
+	uint16_t code;
+
+	if((ret = read_huffman_bits(5)) < 0)
+		return ret;
+
+	code = ret;
 
 	if(code < 4)
 		return code + 1;
@@ -128,24 +151,38 @@ static uint16_t read_fixed_distance()
 
 static int read_fixed_block()
 {
-	for(int i = 0;; i++) /* TODO: is there a max length? */
+	while(1)
 	{
-		uint16_t code = read_fixed_code();
+		int ret;
+		uint16_t code;
+		uint16_t len;
 
-		int len = decode_symbol(code);
+		if((ret = read_fixed_code()) < 0)
+			return ret;
 
-		if(len < 0)
+		code = ret;
+
+		if((ret = decode_symbol(code)) < 0)
+			return ret;
+
+		if(ret < 0)
 			return len;
 
-		if(len == EOB)
+		if(ret == EOB)
 			break;
 
-		if(len > 0)
+		len = ret;
+
+		if(len != 0)
 		{
-			uint16_t distance = read_fixed_distance();
+			if((ret = read_fixed_distance()) < 0)
+				return ret;
+
+			uint16_t distance = ret;
 
 			LOG_DEBUG("Match: %d, %d\n", len, distance);
-			write_match(len, distance);
+			if((ret = write_match(len, distance)) < 0)
+				return ret;
 		}
 	}
 
@@ -160,7 +197,7 @@ static uint8_t code_order[19] =
 	5, 11, 4, 12, 3, 13, 2, 14, 1, 15
 };
 
-static int build_code_tree(uint8_t code_lens[], uint16_t huffman_tree[], int n_codes, int n_bits)
+static void build_code_tree(uint8_t code_lens[], uint16_t huffman_tree[], int n_codes, int n_bits)
 {
 	/* [symbol] => <code,bits> */
 	/* TODO: implement binary tree as alternative */
@@ -184,8 +221,14 @@ static int build_code_tree(uint8_t code_lens[], uint16_t huffman_tree[], int n_c
 
 static int read_code_tree(uint16_t code_tree[], int n_codes, int n_bits)
 {
-	/* Read 16 bits without discarding them from input stream */
-	uint16_t code = peek_huffman_bits(n_bits);
+	int ret;
+	uint16_t code;
+
+	/* Read n bits without discarding them from input stream */
+	if((ret = peek_huffman_bits(n_bits)) < 0)
+		return ret;
+
+	code = ret;
 
 	/* Check if code matches code_tree[2*j] */
 	for(int j = 0; j < n_codes; j++)
@@ -195,40 +238,55 @@ static int read_code_tree(uint16_t code_tree[], int n_codes, int n_bits)
 		if((code >> (n_bits-i)) == code_tree[2*j] && i > 0)
 		{
 			/* We found the code */
-			read_huffman_bits(i); /* Discard i bits from input stream */
+			/* Discard the i bits from input stream */
+			if((ret = read_huffman_bits(i)) < 0)
+				return ret;
+
 			return j;
 		}
 	}
 
 	/* Error, code was not in tree */
-
-	return -1;
+	return -EINVAL;
 }
 
 static int read_litlen_code(uint16_t code_tree[], uint8_t *len)
 {
-	int code = read_code_tree(code_tree, 19, 7);
+	int ret;
+	uint16_t code;
 
-	if(code < 0)
+	if((ret = read_code_tree(code_tree, 19, 7)) < 0)
 	{
 		LOG_ERROR("Decode error\n");
-		return -1;
+		return ret;
 	}
-	else if(code < 16)
+
+	code = ret;
+
+	if(code < 16)
 		LOG_DEBUG("%d\n", code);
 	else if(code == 16)
 	{
-		*len = read_bits(2) + 3;
+		if((ret = read_bits(2)) < 0)
+			return ret;
+
+		*len = ret + 3;
 		LOG_DEBUG("%d(%d)\n", code, *len);
 	}
 	else if(code == 17)
 	{
-		*len = read_bits(3) + 3;
+		if((ret = read_bits(3)) < 0)
+			return ret;
+
+		*len = ret + 3;
 		LOG_DEBUG("%d(%d)\n", code, *len);
 	}
 	else
 	{
-		*len = read_bits(7) + 11;
+		if((ret = read_bits(7)) < 0)
+			return ret;
+
+		*len = ret + 11;
 		LOG_DEBUG("%d(%d)\n", code, *len);
 	}
 
@@ -239,13 +297,16 @@ static int read_huffman_tree_lens(uint16_t cl_tree[], uint8_t code_lens[], int t
 {
 	for(int i = 0; i < tree_len;)
 	{
+		int ret;
 		uint8_t len;
-		int code_len = read_litlen_code(cl_tree, &len);
+		uint16_t code_len;
 
-		if(code_len < 0)
-			return -1;
+		if((ret = read_litlen_code(cl_tree, &len)) < 0)
+			return ret;
 
-		else if(code_len < 16)
+		code_len = ret;
+
+		if(code_len < 16)
 			code_lens[i++] = code_len;
 
 		else if(code_len == 16)
@@ -260,9 +321,25 @@ static int read_huffman_tree_lens(uint16_t cl_tree[], uint8_t code_lens[], int t
 
 static int read_dynamic_block()
 {
-	uint16_t hlit = read_bits(5) + 257;
-	uint8_t hdist = read_bits(5) + 1;
-	uint8_t hclen = read_bits(4) + 4;
+	int ret;
+	uint16_t hlit;
+	uint8_t hdist;
+	uint8_t hclen;
+
+	if((ret = read_bits(5)) < 0)
+		return ret;
+
+	hlit = ret + 257;
+
+	if((ret = read_bits(5)) < 0)
+		return ret;
+
+	hdist = ret + 1;
+
+	if((ret = read_bits(4)) < 0)
+		return ret;
+
+	hclen = ret + 4;
 
 	uint16_t cl_tree[19*2] = {0}; /* CL tree */
 	uint16_t litlen_tree[286*2] = {0}; /* litlen tree */
@@ -277,7 +354,10 @@ static int read_dynamic_block()
 		/* Read CL lengths */
 		for(int i = 0; i < hclen; i++)
 		{
-			uint8_t code = read_bits(3);
+			if((ret = read_bits(3)) < 0)
+				return ret;
+
+			uint8_t code = ret;
 			cl_lens[code_order[i]] = code;
 		}
 
@@ -299,8 +379,10 @@ static int read_dynamic_block()
 
 		/* Read literal and dist tree lengths */
 
-		read_huffman_tree_lens(cl_tree, litlen_lens, hlit);
-		read_huffman_tree_lens(cl_tree, dist_lens, hdist);
+		if((ret = read_huffman_tree_lens(cl_tree, litlen_lens, hlit)) < 0)
+			return ret;
+		if((ret = read_huffman_tree_lens(cl_tree, dist_lens, hdist)) < 0)
+			return ret;
 
 		/* Debug code */
 
@@ -328,24 +410,31 @@ static int read_dynamic_block()
 
 	/* Read data */
 
-	for(int i = 0;; i++) /* TODO: is there a max length? */
+	while(1)
 	{
-		uint16_t code = read_code_tree(litlen_tree, 286, 16);
+		if((ret = read_code_tree(litlen_tree, 286, 16)) < 0)
+			return ret;
 
-		int len = decode_symbol(code);
+		uint16_t code = ret;
 
-		if(len < 0)
-			return len;
+		if((ret = decode_symbol(code)) < 0)
+			return ret;
 
-		if(len == EOB)
+		if(ret == EOB)
 			break;
 
-		if(len > 0)
+		uint16_t len = ret;
+
+		if(len != 0)
 		{
-			uint16_t distance = read_code_tree(dist_tree, 32, 16);
+			if((ret = read_code_tree(dist_tree, 32, 16)) < 0)
+				return ret;
+
+			uint16_t distance = ret;
 
 			LOG_DEBUG("Match: %d, %d\n", len, distance);
-			write_match(len, distance);
+			if((ret = write_match(len, distance)) < 0)
+				return ret;
 		}
 	}
 
@@ -358,38 +447,46 @@ int deflate()
 {
 	while(1)
 	{
+		int ret;
+
 		/* Read DEFLATE header */
-		int last_block = read_bits(1);
+		if((ret = read_bits(1)) < 0)
+			return ret;
+
+		int last_block = ret;
 
 		if(last_block)
 			LOG_DEBUG("Last block\n");
 		else
 			LOG_DEBUG("Not last block\n");
 
-		int btype = read_bits(2);
+		if((ret = read_bits(2)) < 0)
+			return ret;
+
+		int btype = ret;
 
 		if(btype == 0)
 		{
-			LOG_DEBUG("Non-compressed\n"); /* TODO */
-			if(read_non_compressed_block() < 0)
-				return -1;
+			LOG_DEBUG("Non-compressed\n");
+			if((ret = read_non_compressed_block()) < 0)
+				return ret;
 		}
 		else if(btype == 1)
 		{
 			LOG_DEBUG("Fixed Huffman\n");
-			if(read_fixed_block() < 0)
-				return -1;
+			if((ret = read_fixed_block()) < 0)
+				return ret;
 		}
 		else if(btype == 2)
 		{
 			LOG_DEBUG("Dynamic Huffman\n");
-			if(read_dynamic_block() < 0)
-				return -1;
+			if((ret = read_dynamic_block()) < 0)
+				return ret;
 		}
 		else
 		{
 			LOG_DEBUG("Invalid block type 11\n");
-			return -1;
+			return -EINVAL;
 		}
 
 		if(last_block)
