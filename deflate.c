@@ -293,6 +293,24 @@ static int read_litlen_code(uint16_t code_tree[], uint8_t *len)
 	return code;
 }
 
+static int read_dynamic_distance(uint16_t dist_tree[])
+{
+	int ret;
+	uint16_t code;
+
+	if((ret = read_code_tree(dist_tree, 32, 16)) < 0)
+		return ret;
+
+	code = ret;
+
+	if(code < 4)
+		return code + 1;
+
+	uint16_t base = 1+2*(1<<((code-2)/2)) + (code&1)*(1<<((code-2)/2));
+
+	return base + read_bits((code-2)/2);
+}
+
 static int read_huffman_tree_lens(uint16_t cl_tree[], uint8_t code_lens[], int tree_len)
 {
 	for(int i = 0; i < tree_len;)
@@ -401,11 +419,13 @@ static int read_dynamic_block()
 
 		/* Debug code */
 
+		LOG_DEBUG("Litlen tree:\n");
 		for(int i = 0; i < 286; i++)
-			LOG_DEBUG("(%d,%d)\n", litlen_tree[2*i], litlen_tree[2*i + 1]);
+			LOG_DEBUG("%d: (%d,%d)\n", i, litlen_tree[2*i], litlen_tree[2*i + 1]);
 
+		LOG_DEBUG("Dist tree:\n");
 		for(int i = 0; i < 32; i++)
-			LOG_DEBUG("(%d,%d)\n", dist_tree[2*i], dist_tree[2*i + 1]);
+			LOG_DEBUG("%d: (%d,%d)\n", i, dist_tree[2*i], dist_tree[2*i + 1]);
 	}
 
 	/* Read data */
@@ -427,7 +447,7 @@ static int read_dynamic_block()
 
 		if(len != 0)
 		{
-			if((ret = read_code_tree(dist_tree, 32, 16)) < 0)
+			if((ret = read_dynamic_distance(dist_tree)) < 0)
 				return ret;
 
 			uint16_t distance = ret;
