@@ -368,7 +368,7 @@ static int read_dynamic_block()
 
 		build_code_tree(cl_lens, cl_tree, 19, 8);
 
-		for(int i = 0; i < 32; i++)
+		for(int i = 0; i < 19; i++)
 			LOG_DEBUG("(%d,%d)\n", cl_tree[2*i], cl_tree[2*i + 1]);
 	}
 
