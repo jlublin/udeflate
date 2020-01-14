@@ -12,7 +12,7 @@ TARGET_OBJ = $(addprefix $(BUILD)/, $(OBJ))
 PYTHON_TESTS = $(wildcard tests/test*.py)
 SH_TESTS = $(wildcard tests/test*.sh)
 C_TESTS = $(wildcard tests/test*.c)
-TESTS = $(PYTHON_TESTS) $(SH_TESTS) $(C_TESTS)
+TESTS = $(sort $(PYTHON_TESTS) $(SH_TESTS) $(C_TESTS))
 
 all: $(TARGET_BINARY)
 
