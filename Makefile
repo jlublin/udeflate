@@ -9,8 +9,10 @@ OBJ = main.o deflate.o
 TARGET_BINARY = $(addprefix $(BUILD)/, $(BINARY))
 TARGET_OBJ = $(addprefix $(BUILD)/, $(OBJ))
 
-TEST_VECTOR = dot gradient white
-TARGET_TEST_VECTOR = $(addprefix tests/, $(addsuffix .deflate, $(TEST_VECTOR)))
+PYTHON_TESTS = $(wildcard tests/test*.py)
+SH_TESTS = $(wildcard tests/test*.sh)
+C_TESTS = $(wildcard tests/test*.c)
+TESTS = $(PYTHON_TESTS) $(SH_TESTS) $(C_TESTS)
 
 all: $(TARGET_BINARY)
 
@@ -18,9 +20,6 @@ clean:
 	rm -f $(TARGET_BINARY)
 	rm -f $(TARGET_OBJ)
 	rmdir $(BUILD)
-
-test:
-	echo $(TARGET_OBJ)
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -35,10 +34,14 @@ $(TARGET_OBJ): $(BUILD)/%.o: %.c
 main.c: deflate.h
 deflate.c: deflate.h deflate_config.h
 
-check: $(TARGET_BINARY) $(TARGET_TEST_VECTOR)
+check: $(TARGET_BINARY) $(TESTS)
 
-%.deflate: %.out
-	@echo
-	@echo Testing $@
-	@echo '######################################################'
-	@diff <($(TARGET_BINARY) $@ | grep 'Data:') $< && echo 'Success!' || (echo 'Failure!' ; exit 1)
+$(TESTS):
+	@printf "Testing $@: "
+	@TARGET=$(PWD)/$(TARGET_BINARY) \
+	BUILD_DIR=$(PWD)/$(BUILD) \
+	TESTS_DIR=$(PWD)/tests \
+	$@ \
+	&& echo 'Success!' || (echo 'Failure!'; exit 1)
+
+.PHONY: clean $(TESTS)
