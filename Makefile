@@ -1,38 +1,56 @@
+default: all
+#################
+# Configuration #
+#################
+
+# Source files
+SRC = main.c deflate.c
+
+# Header dependencies
+main.c: deflate.h
+deflate.c: deflate.h deflate_config.h
+
+#################
+# Default tools #
+#################
+
 CC = gcc
 LD = gcc
 BINARY = deflate
 BUILD = build
 SHELL = /bin/bash
 
-OBJ = main.o deflate.o
+#######################
+# Generated variables #
+#######################
 
+OBJ = $(addprefix $(BUILD)/, $(SRC:.c=.o))
 TARGET_BINARY = $(addprefix $(BUILD)/, $(BINARY))
-TARGET_OBJ = $(addprefix $(BUILD)/, $(OBJ))
 
 PYTHON_TESTS = $(wildcard tests/test*.py)
 SH_TESTS = $(wildcard tests/test*.sh)
 C_TESTS = $(wildcard tests/test*.c)
 TESTS = $(sort $(PYTHON_TESTS) $(SH_TESTS) $(C_TESTS))
 
+#########
+# Rules #
+#########
+
 all: $(TARGET_BINARY)
 
 clean:
 	rm -f $(TARGET_BINARY)
-	rm -f $(TARGET_OBJ)
+	rm -f $(OBJ)
 	rmdir $(BUILD)
 
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(TARGET_BINARY): $(TARGET_OBJ)
-	$(LD) -o $(TARGET_BINARY) $(TARGET_OBJ)
+$(TARGET_BINARY): $(OBJ)
+	$(LD) -o $(TARGET_BINARY) $(OBJ)
 
-$(TARGET_OBJ): $(BUILD)/%.o: %.c
-	mkdir -p $(BUILD)
+$(OBJ): $(BUILD)/%.o: %.c $(BUILD)
 	$(CC) -c -o $@ $<
-
-main.c: deflate.h
-deflate.c: deflate.h deflate_config.h
 
 check: $(TARGET_BINARY) $(TESTS)
 
