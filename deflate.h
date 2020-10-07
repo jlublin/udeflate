@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <errno.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /***** Application defined functions *****/
 int deflate_read_byte();
 int deflate_write_byte(uint8_t data);
@@ -11,3 +15,7 @@ int deflate_write_input_bytes(uint16_t len);
 
 /***** Deflate functions *****/
 int deflate();
+
+#ifdef __cplusplus
+};
+#endif
