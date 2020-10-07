@@ -26,10 +26,10 @@ SOFTWARE.
 
 #include <stdio.h>
 #include <stdint.h>
-#include <string.h>
 #include <errno.h>
 
 #include "deflate.h"
+#include "mem2mem.h"
 
 /***** I/O code *****/
 
@@ -46,65 +46,6 @@ SOFTWARE.
 
 uint8_t input[IN_SIZE];
 uint8_t output[OUT_SIZE];
-
-int i_in; /* Next input byte index */
-int i_out; /* Next output byte index */
-
-int read_byte()
-{
-	/* Check input is OK with another aligned byte */
-	if(i_in + 1 > IN_SIZE)
-		return -EINVAL;
-
-	return input[i_in++];
-}
-
-int write_byte(uint8_t data)
-{
-	/* Check output is OK with another byte */
-	if((i_out + 1) > OUT_SIZE)
-		return -ENOMEM;
-
-	output[i_out++] = data;
-
-	return 0;
-}
-
-int write_match(uint16_t len, uint16_t dist)
-{
-	/* Check output is OK with len */
-	if((i_out + len) > OUT_SIZE)
-		return -ENOMEM;
-
-	/* Check output is OK with dist */
-	if(i_out - dist < 0)
-		return -EINVAL;
-
-	/* Byte by byte copy, memcpy doesn't work on overlapping regions */
-	uint8_t *ptr = &output[i_out - dist];
-
-	for(int i = 0; i < len; i++)
-		output[i_out++] = *(ptr++);
-
-	return 0;
-}
-
-int write_input_bytes(uint16_t len)
-{
-	/* Check input and output is OK with len */
-	if((i_out + len) > OUT_SIZE)
-		return -ENOMEM;
-
-	if(i_in + len > IN_SIZE)
-		return -EINVAL;
-
-	memcpy(&output[i_out], &input[i_in], len);
-
-	i_out += len;
-	i_in += len;
-
-	return 0;
-}
 
 /***** Main code *****/
 
@@ -140,8 +81,11 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	i_in = 0;
-	i_out = 0;
+	if((ret = mem2mem_init(input, IN_SIZE, output, OUT_SIZE)) < 0)
+	{
+		printf("Invalid arguments to mem2mem_init\n");
+		return -1;
+	}
 
 	if((ret = deflate()) < 0)
 	{
@@ -150,7 +94,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("Data: ");
-	for(int i = 0; i < i_out; i++)
+	for(int i = 0; i < mem2mem_output_length(); i++)
 		printf("%02x ", output[i]);
 	printf("\n");
 

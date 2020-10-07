@@ -4,10 +4,10 @@ default: all
 #################
 
 # Source files
-SRC = main.c deflate.c
+SRC = main.c deflate.c mem2mem.c
 
 # Header dependencies
-main.c: deflate.h
+main.c: deflate.h mem2mem.h
 deflate.c: deflate.h deflate_config.h
 
 #################
