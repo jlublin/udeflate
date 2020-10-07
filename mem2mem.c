@@ -11,7 +11,7 @@ static int dst_length;
 static int i_src; /* Next input byte index */
 static int i_dst; /* Next output byte index */
 
-int mem2mem_init(uint8_t *_src, int _src_length, uint8_t *_dst, int _dst_length)
+int deflate_mem2mem_init(uint8_t *_src, int _src_length, uint8_t *_dst, int _dst_length)
 {
 	if(!_src || ! _dst || _src_length < 1 || _dst_length < 1)
 		return -EINVAL;
@@ -26,12 +26,12 @@ int mem2mem_init(uint8_t *_src, int _src_length, uint8_t *_dst, int _dst_length)
 	return 0;
 }
 
-int mem2mem_output_length()
+int deflate_mem2mem_output_length()
 {
 	return i_dst;
 }
 
-int read_byte()
+int deflate_read_byte()
 {
 	/* Check input is OK with another aligned byte */
 	if(i_src + 1 > src_length)
@@ -40,7 +40,7 @@ int read_byte()
 	return src[i_src++];
 }
 
-int write_byte(uint8_t data)
+int deflate_write_byte(uint8_t data)
 {
 	/* Check output is OK with another byte */
 	if((i_dst + 1) > dst_length)
@@ -51,7 +51,7 @@ int write_byte(uint8_t data)
 	return 0;
 }
 
-int write_match(uint16_t len, uint16_t dist)
+int deflate_write_match(uint16_t len, uint16_t dist)
 {
 	/* Check output is OK with len */
 	if((i_dst + len) > dst_length)
@@ -70,7 +70,7 @@ int write_match(uint16_t len, uint16_t dist)
 	return 0;
 }
 
-int write_input_bytes(uint16_t len)
+int deflate_write_input_bytes(uint16_t len)
 {
 	/* Check input and output is OK with len */
 	if((i_dst + len) > dst_length)

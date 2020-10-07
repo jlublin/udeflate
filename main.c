@@ -81,9 +81,9 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	if((ret = mem2mem_init(input, IN_SIZE, output, OUT_SIZE)) < 0)
+	if((ret = deflate_mem2mem_init(input, IN_SIZE, output, OUT_SIZE)) < 0)
 	{
-		printf("Invalid arguments to mem2mem_init\n");
+		printf("Invalid arguments to deflate_mem2mem_init\n");
 		return -1;
 	}
 
@@ -94,7 +94,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("Data: ");
-	for(int i = 0; i < mem2mem_output_length(); i++)
+	for(int i = 0; i < deflate_mem2mem_output_length(); i++)
 		printf("%02x ", output[i]);
 	printf("\n");
 

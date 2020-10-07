@@ -40,7 +40,36 @@ static uint32_t in_bits;
 static int n_in = 0; /* Current number of bits in in_bits */
 static int i_in = 0; /* Next input bit index */
 
-int read_next_byte()
+static int fetch_bits(int bits_needed)
+{
+	int ret;
+
+	if(bits_needed > 24)
+		return -EINVAL;
+
+	/* Remove any whole bytes we've consumed */
+	int remove_bits = i_in & 0xf8;
+	i_in &= 0x7;
+	n_in -= remove_bits;
+	in_bits >>= remove_bits;
+
+	/* Read up to bytes needed */
+	int n = (bits_needed - (n_in - i_in) + 7) / 8;
+	for(int i = 0; i < n; i++)
+	{
+		if((ret = deflate_read_byte()) < 0)
+			return ret;
+
+
+		/* Put them last as most significant bits */
+		in_bits |= ret << n_in;
+		n_in += 8;
+	}
+
+	return 0;
+}
+
+static int read_next_byte()
 {
 	int ret;
 
@@ -50,16 +79,8 @@ int read_next_byte()
 	i_in &= 0x7;
 	n_in -= 8;
 
-	if(n_in - i_in < 8)
-	{
-		if((ret = read_byte()) < 0)
-			return ret;
-
-		in_bits = ret;
-		n_in = 8;
-		i_in = 0;
-	}
-
+	if((ret = fetch_bits(8)) < 0)
+		return ret;
 
 	ret = (in_bits >> i_in) & 0xff;
 	i_in += 8;
@@ -67,25 +88,18 @@ int read_next_byte()
 	return ret;
 }
 
-int read_bits(int n_bits)
+static int read_bits(int n_bits)
 {
 	/* Return order: x[0] x[1] etc... */
 
 	int ret;
-	uint32_t bits = 0; /* TODO: change to int */
+	int bits = 0;
+
+	if((ret = fetch_bits(n_bits)) < 0)
+		return ret;
 
 	for(int i = 0; i < n_bits; i++, i_in++)
 	{
-		if(i_in >= n_in)
-		{
-			if((ret = read_byte()) < 0)
-				return ret;
-
-			in_bits = ret;
-			n_in = 8;
-			i_in = 0;
-		}
-
 		int next = (in_bits >> i_in) & 1;
 		bits |= next << i;
 	}
@@ -93,61 +107,39 @@ int read_bits(int n_bits)
 	return bits;
 }
 
-int read_huffman_bits(int n_bits)
+static int read_huffman_bits(int n_bits)
 {
 	/* Return order: x[n] x[n-1] etc... */
 
 	int ret;
-	uint32_t bits = 0; /* TODO: change to int */
+	int bits = 0;
+
+	if((ret = fetch_bits(n_bits)) < 0)
+		return ret;
 
 	for(int i = 0; i < n_bits; i++, i_in++)
 	{
-		if(i_in >= n_in)
-		{
-			if((ret = read_byte()) < 0)
-				return ret;
-
-			in_bits = ret;
-			n_in = 8;
-			i_in = 0;
-		}
-
 		int next = (in_bits >> i_in) & 1;
 		bits = (bits << 1) | next;
 	}
 
-	/*
-	 * Remove any whole bytes we've consumed since peek_huffman_bits will not
-	 * remove them.
-	 */
-	int remove_bits = i_in & 0xf8;
-	i_in &= 0x7;
-	n_in -= remove_bits;
-	in_bits >>= remove_bits;
-
 	return bits;
 }
 
-int peek_huffman_bits(int n_bits)
+static int peek_huffman_bits(int n_bits)
 {
 	/* Return order: x[n] x[n-1] etc... */
 
 	int ret;
-	uint32_t bits = 0;
+	int bits = 0;
+
+	if((ret = fetch_bits(n_bits)) < 0)
+		return ret;
 
 	int peek_i_in = i_in;
 
 	for(int i = 0; i < n_bits; i++, peek_i_in++)
 	{
-		if(peek_i_in >= n_in)
-		{
-			if((ret = read_byte()) < 0)
-				return ret;
-
-			in_bits |= ret << n_in;
-			n_in += 8;
-		}
-
 		int next = (in_bits >> peek_i_in) & 1;
 		bits = (bits << 1) | next;
 	}
@@ -156,7 +148,7 @@ int peek_huffman_bits(int n_bits)
 }
 
 /***** General functions *****/
-const int EOB = 0x10000;
+static const int EOB = 0x10000;
 static int decode_symbol(uint16_t code)
 {
 	int ret = 0;
@@ -164,7 +156,7 @@ static int decode_symbol(uint16_t code)
 	if(code < 256)
 	{
 		LOG_DEBUG("Code: %d\n", code);
-		write_byte(code);
+		deflate_write_byte(code);
 	}
 
 	else if(code == 256)
@@ -213,7 +205,7 @@ static int read_non_compressed_block()
 	if(len != ~nlen)
 		return -EINVAL;
 
-	return write_input_bytes(len);
+	return deflate_write_input_bytes(len);
 }
 
 /***** Fixed Huffman coding block *****/
@@ -302,7 +294,7 @@ static int read_fixed_block()
 			uint16_t distance = ret;
 
 			LOG_DEBUG("Match: %d, %d\n", len, distance);
-			if((ret = write_match(len, distance)) < 0)
+			if((ret = deflate_write_match(len, distance)) < 0)
 				return ret;
 		}
 	}
@@ -574,7 +566,7 @@ static int read_dynamic_block()
 			uint16_t distance = ret;
 
 			LOG_DEBUG("Match: %d, %d\n", len, distance);
-			if((ret = write_match(len, distance)) < 0)
+			if((ret = deflate_write_match(len, distance)) < 0)
 				return ret;
 		}
 	}
