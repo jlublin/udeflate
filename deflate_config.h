@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#if 1
+#if 0
 #define LOG_DEBUG(x, ...) printf(x, ##__VA_ARGS__)
 #define LOG_INFO(x, ...) printf(x, ##__VA_ARGS__)
 #define LOG_WARNING(x, ...) printf(x, ##__VA_ARGS__)
