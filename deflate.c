@@ -34,6 +34,127 @@ SOFTWARE.
  * x         - Any code returned from I/O code
  */
 
+/***** Read functions *****/
+
+static uint32_t in_bits;
+static int n_in = 0; /* Current number of bits in in_bits */
+static int i_in = 0; /* Next input bit index */
+
+int read_next_byte()
+{
+	int ret;
+
+	/* Align i_in to byte boundary */
+	int offset = (i_in + 7) & 0x7;
+	in_bits >>= offset;
+	i_in &= 0x7;
+	n_in -= 8;
+
+	if(n_in - i_in < 8)
+	{
+		if((ret = read_byte()) < 0)
+			return ret;
+
+		in_bits = ret;
+		n_in = 8;
+		i_in = 0;
+	}
+
+
+	ret = (in_bits >> i_in) & 0xff;
+	i_in += 8;
+
+	return ret;
+}
+
+int read_bits(int n_bits)
+{
+	/* Return order: x[0] x[1] etc... */
+
+	int ret;
+	uint32_t bits = 0; /* TODO: change to int */
+
+	for(int i = 0; i < n_bits; i++, i_in++)
+	{
+		if(i_in >= n_in)
+		{
+			if((ret = read_byte()) < 0)
+				return ret;
+
+			in_bits = ret;
+			n_in = 8;
+			i_in = 0;
+		}
+
+		int next = (in_bits >> i_in) & 1;
+		bits |= next << i;
+	}
+
+	return bits;
+}
+
+int read_huffman_bits(int n_bits)
+{
+	/* Return order: x[n] x[n-1] etc... */
+
+	int ret;
+	uint32_t bits = 0; /* TODO: change to int */
+
+	for(int i = 0; i < n_bits; i++, i_in++)
+	{
+		if(i_in >= n_in)
+		{
+			if((ret = read_byte()) < 0)
+				return ret;
+
+			in_bits = ret;
+			n_in = 8;
+			i_in = 0;
+		}
+
+		int next = (in_bits >> i_in) & 1;
+		bits = (bits << 1) | next;
+	}
+
+	/*
+	 * Remove any whole bytes we've consumed since peek_huffman_bits will not
+	 * remove them.
+	 */
+	int remove_bits = i_in & 0xf8;
+	i_in &= 0x7;
+	n_in -= remove_bits;
+	in_bits >>= remove_bits;
+
+	return bits;
+}
+
+int peek_huffman_bits(int n_bits)
+{
+	/* Return order: x[n] x[n-1] etc... */
+
+	int ret;
+	uint32_t bits = 0;
+
+	int peek_i_in = i_in;
+
+	for(int i = 0; i < n_bits; i++, peek_i_in++)
+	{
+		if(peek_i_in >= n_in)
+		{
+			if((ret = read_byte()) < 0)
+				return ret;
+
+			in_bits |= ret << n_in;
+			n_in += 8;
+		}
+
+		int next = (in_bits >> peek_i_in) & 1;
+		bits = (bits << 1) | next;
+	}
+
+	return bits;
+}
+
 /***** General functions *****/
 const int EOB = 0x10000;
 static int decode_symbol(uint16_t code)

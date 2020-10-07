@@ -47,88 +47,23 @@ SOFTWARE.
 uint8_t input[IN_SIZE];
 uint8_t output[OUT_SIZE];
 
-int i_in; /* Next input bit index */
+int i_in; /* Next input byte index */
 int i_out; /* Next output byte index */
 
-int read_bits(int n_bits)
-{
-	/* Check input is OK with n_bits */
-	if((((i_in + n_bits + 7) & (~7)) >> 3) > IN_SIZE)
-		return -EINVAL;
-
-	/* Return order: x[0] x[1] etc... */
-
-	uint32_t ret = 0;
-
-	for(int i = 0; i < n_bits; i++, i_in++)
-	{
-		int next = (input[i_in >> 3] >> (i_in & 0x7)) & 1;
-		ret |= next << i;
-	}
-
-	return ret;
-}
-
-int read_huffman_bits(int n_bits)
-{
-	/* Check input is OK with n_bits */
-	if((((i_in + n_bits + 7) & (~7)) >> 3) > IN_SIZE)
-		return -EINVAL;
-
-	/* Return order: x[n] x[n-1] etc... */
-
-	uint32_t ret = 0;
-
-	for(int i = 0; i < n_bits; i++, i_in++)
-	{
-		int next = (input[i_in >> 3] >> (i_in & 0x7)) & 1;
-		ret = (ret << 1) | next;
-	}
-
-	return ret;
-}
-
-int peek_huffman_bits(int n_bits)
-{
-	/* Check input is OK with n_bits */
-	if((((i_in + n_bits + 7) & (~7)) >> 3) > IN_SIZE)
-		return -EINVAL;
-
-	/* Return order: x[n] x[n-1] etc... */
-
-	uint32_t ret = 0;
-
-	int tmp_i_in = i_in;
-
-	for(int i = 0; i < n_bits; i++, tmp_i_in++)
-	{
-		int next = (input[tmp_i_in >> 3] >> (tmp_i_in & 0x7)) & 1;
-		ret = (ret << 1) | next;
-	}
-
-	return ret;
-}
-
-int read_next_byte()
+int read_byte()
 {
 	/* Check input is OK with another aligned byte */
-	if((((i_in + 7) & (~7)) >> 3) + 1 > IN_SIZE)
+	if(i_in + 1 > IN_SIZE)
 		return -EINVAL;
 
-	i_in = (i_in + 7) & (~7);
-
-	uint8_t ret = input[i_in >> 3];
-
-	i_in += 8;
-
-	return ret;
+	return input[i_in++];
 }
 
 int write_byte(uint8_t data)
 {
 	/* Check output is OK with another byte */
 	if((i_out + 1) > OUT_SIZE)
-		return -EOVERFLOW;
+		return -ENOMEM;
 
 	output[i_out++] = data;
 
@@ -139,7 +74,7 @@ int write_match(uint16_t len, uint16_t dist)
 {
 	/* Check output is OK with len */
 	if((i_out + len) > OUT_SIZE)
-		return -EOVERFLOW;
+		return -ENOMEM;
 
 	/* Check output is OK with dist */
 	if(i_out - dist < 0)
@@ -158,15 +93,15 @@ int write_input_bytes(uint16_t len)
 {
 	/* Check input and output is OK with len */
 	if((i_out + len) > OUT_SIZE)
-		return -EOVERFLOW;
+		return -ENOMEM;
 
-	if((i_in >> 3) + len > IN_SIZE)
+	if(i_in + len > IN_SIZE)
 		return -EINVAL;
 
-	memcpy(&output[i_out], &input[i_in >> 3], len);
+	memcpy(&output[i_out], &input[i_in], len);
 
 	i_out += len;
-	i_in += 8*len;
+	i_in += len;
 
 	return 0;
 }
